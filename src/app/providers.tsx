@@ -2,11 +2,14 @@
 
 import { ThemeProvider } from 'next-themes';
 import { ReactNode } from 'react';
+import { ConfigProvider } from '@/contexts/config-context';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      {children}
+      <ConfigProvider>
+        {children}
+      </ConfigProvider>
     </ThemeProvider>
   );
 } 

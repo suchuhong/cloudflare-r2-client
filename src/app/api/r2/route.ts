@@ -8,6 +8,34 @@ import {
   DeleteObjectsCommand
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from 'fs';
+import path from 'path';
+
+// 配置文件的路径
+const CONFIG_FILE_PATH = path.join(process.cwd(), '.r2-config.json');
+
+// 默认配置（从环境变量中获取）
+const DEFAULT_CONFIG = {
+  endpoint: process.env.R2_ENDPOINT || '',
+  region: process.env.R2_REGION || 'auto',
+  accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+  bucketName: process.env.R2_BUCKET_NAME || '',
+};
+
+// 读取配置
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const configData = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
+      return JSON.parse(configData);
+    }
+  } catch (error) {
+    console.error('Error reading config file:', error);
+  }
+  
+  return DEFAULT_CONFIG;
+}
 
 // 定义R2配置接口
 interface R2Config {
@@ -19,13 +47,7 @@ interface R2Config {
 }
 
 // 获取R2配置
-const r2Config: R2Config = {
-  endpoint: process.env.R2_ENDPOINT || '',
-  region: process.env.R2_REGION || 'auto',
-  accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-  bucketName: process.env.R2_BUCKET_NAME || '',
-};
+const r2Config: R2Config = readConfig();
 
 // 检查配置是否有效
 function isR2ConfigValid(): boolean {
@@ -46,6 +68,7 @@ function getR2Client() {
       accessKeyId: r2Config.accessKeyId,
       secretAccessKey: r2Config.secretAccessKey,
     },
+    forcePathStyle: true,
   });
 }
 

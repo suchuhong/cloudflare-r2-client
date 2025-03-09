@@ -9,28 +9,20 @@ import { R2Object } from "@/lib/r2-types";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NewFolderDialog } from "@/components/new-folder-dialog";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { useConfig } from "@/contexts/config-context";
+import { Loading } from "@/components/loading";
 
 export default function Home() {
+  const { isConfigValid, isLoading: isConfigLoading } = useConfig();
+  
   const [files, setFiles] = useState<R2Object[]>([]);
   const [currentPrefix, setCurrentPrefix] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<R2Object | null>(null);
   const [signedUrl, setSignedUrl] = useState("");
-  const [configValid, setConfigValid] = useState(true);
-  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
-
-  // 检查配置是否有效
-  const checkConfig = async () => {
-    try {
-      const response = await fetch('/api/r2?action=checkConfig');
-      const data = await response.json();
-      setConfigValid(data.isValid);
-    } catch (error) {
-      console.error("Error checking config:", error);
-      setConfigValid(false);
-    }
-  };
 
   // 加载文件列表
   const loadFiles = async () => {
@@ -58,17 +50,12 @@ export default function Home() {
     }
   };
 
-  // 初始加载
-  useEffect(() => {
-    checkConfig();
-  }, []);
-
   // 监听前缀变化重新加载文件
   useEffect(() => {
-    if (configValid) {
+    if (isConfigValid) {
       loadFiles();
     }
-  }, [currentPrefix, configValid]);
+  }, [currentPrefix, isConfigValid]);
 
   // 处理文件点击
   const handleFileClick = async (file: R2Object) => {
@@ -210,23 +197,27 @@ export default function Home() {
     }
   };
 
-  if (!configValid) {
+  if (isConfigLoading) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4">
+        <Loading text="正在加载配置..." />
+      </main>
+    );
+  }
+
+  if (!isConfigValid) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-          <h1 className="text-2xl font-bold mb-4">Configuration Error</h1>
+          <h1 className="text-2xl font-bold mb-4">配置不完整</h1>
           <p className="mb-4">
-            R2 configuration is incomplete. Please set the following environment variables in your .env.local file:
+            R2 配置不完整。请在设置页面完成配置：
           </p>
-          <ul className="list-disc pl-5 mb-4 space-y-1">
-            <li>R2_ENDPOINT</li>
-            <li>R2_ACCESS_KEY_ID</li>
-            <li>R2_SECRET_ACCESS_KEY</li>
-            <li>R2_BUCKET_NAME</li>
-          </ul>
-          <p>
-            Then restart the application.
-          </p>
+          <div className="flex justify-center mt-4">
+            <Button asChild>
+              <Link href="/settings">转到设置</Link>
+            </Button>
+          </div>
         </div>
       </main>
     );
@@ -243,7 +234,12 @@ export default function Home() {
             Browse, upload, and manage your files in Cloudflare R2 storage
           </p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Button variant="outline" asChild>
+            <Link href="/settings">设置</Link>
+          </Button>
+        </div>
       </div>
       
       <div className="mb-4 flex gap-2">
