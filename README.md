@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cloudflare R2 客户端
 
-## Getting Started
+一个使用 Next.js 和 shadcn/ui 构建的 Cloudflare R2 存储客户端，提供文件浏览、上传、下载和删除功能。
 
-First, run the development server:
+## 功能特点
+
+- 📁 浏览 R2 存储桶中的文件和文件夹
+- 📤 上传文件到当前目录
+- 📥 下载文件（生成预签名 URL）
+- 🗑️ 删除单个或多个文件
+- 🔍 搜索文件
+- 👁️ 预览图片、视频、音频和 PDF 文件
+
+## 技术栈
+
+- [Next.js](https://nextjs.org/) - React 框架
+- [shadcn/ui](https://ui.shadcn.com/) - 组件库
+- [Tailwind CSS](https://tailwindcss.com/) - 样式
+- [AWS SDK for JavaScript](https://aws.amazon.com/sdk-for-javascript/) - 与 R2 交互（R2 兼容 S3 API）
+- [Sonner](https://sonner.emilkowal.ski/) - 通知组件
+
+## 快速开始
+
+### 前提条件
+
+- Node.js 18+ 和 npm
+- Cloudflare R2 存储桶和访问凭证
+
+### 安装
+
+1. 克隆仓库：
+
+```bash
+git clone https://github.com/yourusername/cloudflare-r2-client.git
+cd cloudflare-r2-client
+```
+
+2. 安装依赖：
+
+```bash
+npm install
+```
+
+3. 配置环境变量：
+
+复制 `.env.local.example` 文件为 `.env.local` 并填入你的 Cloudflare R2 凭证：
+
+```
+R2_ENDPOINT=https://xxxxxxxxxxxx.r2.cloudflarestorage.com
+R2_REGION=auto
+R2_ACCESS_KEY_ID=your_access_key_id
+R2_SECRET_ACCESS_KEY=your_secret_access_key
+R2_BUCKET_NAME=your_bucket_name
+```
+
+4. 启动开发服务器：
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. 在浏览器中打开 [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 部署
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+该应用可以部署到任何支持 Next.js 的平台，如 Vercel、Netlify 或自托管服务器。
 
-## Learn More
+### 部署到 Vercel
 
-To learn more about Next.js, take a look at the following resources:
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyourusername%2Fcloudflare-r2-client)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+记得在 Vercel 项目设置中添加环境变量。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 许可证
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
