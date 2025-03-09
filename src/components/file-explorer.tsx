@@ -39,6 +39,8 @@ export function FileExplorer({
 }: FileExplorerProps) {
   const [selectedFiles, setSelectedFiles] = useState<R2Object[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hoverImageKey, setHoverImageKey] = useState<string | null>(null);
+  const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
 
   const filteredFiles = searchQuery
     ? files.filter((file) =>
@@ -96,6 +98,29 @@ export function FileExplorer({
 
     return breadcrumbs;
   };
+
+  // 当鼠标移动时更新位置
+  const handleMouseMove = (e: MouseEvent) => {
+    setHoverPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  // 鼠标进入图片时设置悬停图片的键值
+  const handleMouseEnter = (fileKey: string) => {
+    setHoverImageKey(fileKey);
+  };
+
+  // 鼠标离开图片时清除悬停图片的键值
+  const handleMouseLeave = () => {
+    setHoverImageKey(null);
+  };
+
+  // 监听全局鼠标移动
+  useEffect(() => {
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
+  }, []);
 
   // 当导航更改时重置选择
   useEffect(() => {
@@ -254,6 +279,8 @@ export function FileExplorer({
                             src={imageUrls[file.key]} 
                             alt={displayName}
                             className="w-full h-full object-cover"
+                            onMouseEnter={() => handleMouseEnter(file.key)}
+                            onMouseLeave={handleMouseLeave}
                           />
                         </div>
                       ) : (
@@ -274,6 +301,29 @@ export function FileExplorer({
           </div>
         )}
       </CardContent>
+      
+      {/* 图片悬停预览 */}
+      {hoverImageKey && imageUrls[hoverImageKey] && (
+        <div 
+          className="fixed z-50 rounded-md overflow-hidden shadow-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+          style={{
+            left: `${hoverPosition.x + 20}px`,
+            top: `${hoverPosition.y - 100}px`,
+            pointerEvents: 'none',
+          }}
+        >
+          <div className="relative">
+            <img 
+              src={imageUrls[hoverImageKey]} 
+              alt="预览" 
+              className="max-w-[300px] max-h-[300px] object-contain"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate">
+              {hoverImageKey.split('/').pop()}
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 } 

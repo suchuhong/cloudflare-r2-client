@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { R2Object } from "@/lib/r2-types";
 import { formatFileSize } from "@/lib/utils";
@@ -16,6 +16,23 @@ interface ImageGridProps {
 export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: ImageGridProps) {
   // 只显示有预览URL的图片
   const imagesWithPreview = files.filter(file => imageUrls[file.key]);
+  
+  // 悬停预览状态
+  const [hoverImageKey, setHoverImageKey] = useState<string | null>(null);
+  const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
+  
+  // 当鼠标移动时更新位置
+  const handleMouseMove = (e: MouseEvent) => {
+    setHoverPosition({ x: e.clientX, y: e.clientY });
+  };
+  
+  // 监听全局鼠标移动
+  useEffect(() => {
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
+  }, []);
 
   return (
     <Card className="w-full">
@@ -57,6 +74,8 @@ export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: Im
                   key={file.key}
                   className="group relative aspect-square rounded-md overflow-hidden border cursor-pointer hover:opacity-95 transition-all hover:shadow-md"
                   onClick={() => onImageClick(file)}
+                  onMouseEnter={() => setHoverImageKey(file.key)}
+                  onMouseLeave={() => setHoverImageKey(null)}
                 >
                   <img 
                     src={imageUrls[file.key]} 
@@ -70,6 +89,34 @@ export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: Im
                 </div>
               );
             })}
+          </div>
+        )}
+        
+        {/* 图片悬停预览 */}
+        {hoverImageKey && imageUrls[hoverImageKey] && (
+          <div 
+            className="fixed z-50 rounded-md overflow-hidden shadow-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+            style={{
+              left: `${hoverPosition.x + 20}px`,
+              top: `${hoverPosition.y - 150}px`,
+              pointerEvents: 'none',
+              maxWidth: '400px',
+              maxHeight: '400px',
+            }}
+          >
+            <div className="relative">
+              <img 
+                src={imageUrls[hoverImageKey]} 
+                alt="预览" 
+                className="max-w-[400px] max-h-[400px] object-contain"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-2">
+                <p className="truncate">{hoverImageKey.split('/').pop()}</p>
+                <p className="text-xs text-gray-300">
+                  {formatFileSize(files.find(f => f.key === hoverImageKey)?.size || 0)}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </CardContent>
