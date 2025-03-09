@@ -1,7 +1,0 @@
-{
-  "endpoint": "https://3c0c471c029936f1b7a775612e3ef369.r2.cloudflarestorage.com",
-  "region": "auto",
-  "accessKeyId": "f8dcfa8c5ace1b5f0fcbfa84628f6068",
-  "secretAccessKey": "92de82689c8ac64157e93da1bfe66f18f1312ab9699ac15b8e1ffc179162cec1",
-  "bucketName": "test-1"
-}

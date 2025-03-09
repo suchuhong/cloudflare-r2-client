@@ -12,9 +12,10 @@ interface FilePreviewProps {
   signedUrl: string;
   onClose: () => void;
   onDelete: (file: R2Object) => void;
+  isReadOnly?: boolean;
 }
 
-export function FilePreview({ file, signedUrl, onClose, onDelete }: FilePreviewProps) {
+export function FilePreview({ file, signedUrl, onClose, onDelete, isReadOnly = false }: FilePreviewProps) {
   const fileName = file.key.split("/").pop() || file.key;
   const extension = getFileExtension(fileName);
   
@@ -121,17 +122,36 @@ export function FilePreview({ file, signedUrl, onClose, onDelete }: FilePreviewP
           <Button
             variant="destructive"
             onClick={() => {
-              if (confirm("Are you sure you want to delete this file?")) {
+              if (confirm("确定要删除此文件吗？")) {
                 onDelete(file);
               }
             }}
             className="text-white font-medium hover:bg-red-600 destructive-button"
+            disabled={isReadOnly}
+            title={isReadOnly ? "只读模式下不可用" : "删除文件"}
           >
-            Delete
+            {isReadOnly ? (
+              <span className="flex items-center">
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mr-2"
+                >
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                只读模式
+              </span>
+            ) : "删除"}
           </Button>
           <Button asChild>
             <a href={signedUrl} download={fileName} target="_blank" rel="noopener noreferrer">
-              Download
+              下载
             </a>
           </Button>
         </CardFooter>

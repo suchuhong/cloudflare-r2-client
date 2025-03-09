@@ -27,15 +27,32 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
+  const [showAccessKey, setShowAccessKey] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+  const [configStatus, setConfigStatus] = useState<any>(null);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
 
   // 加载配置
   useEffect(() => {
     const loadSavedConfig = async () => {
       try {
         setIsLoading(true);
+        
+        // 获取配置文件状态信息
+        const statusResponse = await fetch('/api/settings/status');
+        const statusData = await statusResponse.json();
+        console.log('Config file status:', statusData);
+        setConfigStatus(statusData);
+        
+        // 获取掩码后的配置
         const response = await fetch('/api/settings');
         if (response.ok) {
           const data = await response.json();
+          
+          // 默认设置密钥为隐藏状态
+          setShowAccessKey(false);
+          setShowSecretKey(false);
+          
           setConfig(data.config);
         }
       } catch (error) {
@@ -47,6 +64,12 @@ export default function SettingsPage() {
     };
 
     loadSavedConfig();
+    
+    // 页面卸载或重载时重置显示状态
+    return () => {
+      setShowAccessKey(false);
+      setShowSecretKey(false);
+    };
   }, []);
 
   // 保存配置
@@ -54,16 +77,59 @@ export default function SettingsPage() {
     try {
       setIsSaving(true);
       
+      // 创建要发送的配置副本
+      const configToSave = { ...config };
+      
+      // 如果是隐藏状态且显示的是掩码，从服务端获取真实值
+      if (!showAccessKey && configToSave.accessKeyId === '********') {
+        try {
+          const response = await fetch('/api/settings/current');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.config?.accessKeyId) {
+              configToSave.accessKeyId = data.config.accessKeyId;
+            }
+          }
+        } catch (error) {
+          console.error('获取真实秘钥失败', error);
+        }
+      }
+      
+      if (!showSecretKey && configToSave.secretAccessKey === '********') {
+        try {
+          const response = await fetch('/api/settings/current');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.config?.secretAccessKey) {
+              configToSave.secretAccessKey = data.config.secretAccessKey;
+            }
+          }
+        } catch (error) {
+          console.error('获取真实秘钥失败', error);
+        }
+      }
+      
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ config: configToSave }),
       });
       
       if (response.ok) {
         toast.success("配置已保存");
+        
+        // 保存后重置为掩码显示
+        const maskedConfig = {
+          ...config,
+          accessKeyId: configToSave.accessKeyId ? '********' : '',
+          secretAccessKey: configToSave.secretAccessKey ? '********' : ''
+        };
+        
+        setConfig(maskedConfig);
+        setShowAccessKey(false);
+        setShowSecretKey(false);
       } else {
         const data = await response.json();
         toast.error(`保存失败: ${data.error}`);
@@ -106,6 +172,50 @@ export default function SettingsPage() {
     } finally {
       setIsTesting(false);
     }
+  };
+
+  // 点击显示访问密钥ID
+  const handleShowAccessKey = async () => {
+    // 如果当前是隐藏状态，点击显示时需要获取真实秘钥
+    if (!showAccessKey) {
+      try {
+        const response = await fetch('/api/settings/current');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.config?.accessKeyId) {
+            setConfig(prev => ({
+              ...prev,
+              accessKeyId: data.config.accessKeyId
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('获取真实秘钥失败', error);
+      }
+    }
+    setShowAccessKey(!showAccessKey);
+  };
+  
+  // 点击显示秘密访问密钥
+  const handleShowSecretKey = async () => {
+    // 如果当前是隐藏状态，点击显示时需要获取真实秘钥
+    if (!showSecretKey) {
+      try {
+        const response = await fetch('/api/settings/current');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.config?.secretAccessKey) {
+            setConfig(prev => ({
+              ...prev,
+              secretAccessKey: data.config.secretAccessKey
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('获取真实秘钥失败', error);
+      }
+    }
+    setShowSecretKey(!showSecretKey);
   };
 
   return (
@@ -166,12 +276,38 @@ export default function SettingsPage() {
                   <label htmlFor="accessKeyId" className="text-sm font-medium">
                     访问密钥 ID
                   </label>
-                  <Input
-                    id="accessKeyId"
-                    placeholder="Access Key ID"
-                    value={config.accessKeyId}
-                    onChange={(e) => setConfig({ ...config, accessKeyId: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="accessKeyId"
+                      placeholder="Access Key ID"
+                      type={showAccessKey ? "text" : "password"}
+                      value={config.accessKeyId}
+                      onChange={(e) => {
+                        // 更新输入的值
+                        setConfig({ ...config, accessKeyId: e.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+                      onClick={handleShowAccessKey}
+                      title={showAccessKey ? "隐藏密钥" : "显示密钥"}
+                    >
+                      {showAccessKey ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
+                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
+                          <line x1="2" x2="22" y1="2" y2="22"></line>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     在 Cloudflare 控制台 R2 部分创建的 API 密钥的 ID
                   </p>
@@ -181,13 +317,38 @@ export default function SettingsPage() {
                   <label htmlFor="secretAccessKey" className="text-sm font-medium">
                     秘密访问密钥
                   </label>
-                  <Input
-                    id="secretAccessKey"
-                    placeholder="Secret Access Key"
-                    type="password"
-                    value={config.secretAccessKey}
-                    onChange={(e) => setConfig({ ...config, secretAccessKey: e.target.value })}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="secretAccessKey"
+                      placeholder="Secret Access Key"
+                      type={showSecretKey ? "text" : "password"}
+                      value={config.secretAccessKey}
+                      onChange={(e) => {
+                        // 更新输入的值
+                        setConfig({ ...config, secretAccessKey: e.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
+                      onClick={handleShowSecretKey}
+                      title={showSecretKey ? "隐藏密钥" : "显示密钥"}
+                    >
+                      {showSecretKey ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
+                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
+                          <line x1="2" x2="22" y1="2" y2="22"></line>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     在 Cloudflare 控制台 R2 部分创建的 API 密钥的密钥
                   </p>
@@ -226,6 +387,55 @@ export default function SettingsPage() {
             </>
           )}
         </Card>
+        
+        {/* 调试信息 */}
+        <div className="mt-8">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebugInfo(!showDebugInfo)}
+          >
+            {showDebugInfo ? "隐藏调试信息" : "显示调试信息"}
+          </Button>
+          
+          {showDebugInfo && configStatus && (
+            <Card className="mt-4 w-full max-w-2xl mx-auto">
+              <CardHeader>
+                <CardTitle>配置文件状态</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-medium">配置目录</h3>
+                    <p className="text-sm">路径: {configStatus.configDir?.path}</p>
+                    <p className="text-sm">存在: {configStatus.configDir?.exists ? "是" : "否"}</p>
+                    <p className="text-sm">可写: {configStatus.configDir?.isWritable ? "是" : "否"}</p>
+                  </div>
+                  
+                  <div>
+                    <h3 className="font-medium">配置文件</h3>
+                    <p className="text-sm">路径: {configStatus.configFile?.path}</p>
+                    <p className="text-sm">存在: {configStatus.configFile?.exists ? "是" : "否"}</p>
+                    {configStatus.configFile?.stats && (
+                      <p className="text-sm">
+                        最后修改: {new Date(configStatus.configFile.stats.mtime).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <h3 className="font-medium">系统信息</h3>
+                    <p className="text-sm">平台: {configStatus.systemInfo?.platform}</p>
+                    <p className="text-sm">工作目录: {configStatus.systemInfo?.cwd}</p>
+                    <p className="text-sm">用户目录: {configStatus.systemInfo?.homedir}</p>
+                    <p className="text-sm">临时目录: {configStatus.systemInfo?.tmpdir}</p>
+                    <p className="text-sm">用户名: {configStatus.systemInfo?.username}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </LayoutWithSidebar>
   );

@@ -11,8 +11,20 @@ interface R2Config {
   bucketName: string;
 }
 
-// 配置文件的路径
-const CONFIG_FILE_PATH = path.join(process.cwd(), '.r2-config.json');
+// 配置文件的路径 - 使用更可靠的路径
+const CONFIG_DIR = path.join(process.cwd(), 'data');
+const CONFIG_FILE_PATH = path.join(CONFIG_DIR, 'r2-config.json');
+
+// 确保配置目录存在
+function ensureConfigDir() {
+  if (!fs.existsSync(CONFIG_DIR)) {
+    try {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    } catch (error) {
+      console.error('Error creating config directory:', error);
+    }
+  }
+}
 
 // 默认配置（从环境变量中获取）
 const DEFAULT_CONFIG: R2Config = {
@@ -26,6 +38,7 @@ const DEFAULT_CONFIG: R2Config = {
 // 读取配置
 function readConfig(): R2Config {
   try {
+    ensureConfigDir();
     if (fs.existsSync(CONFIG_FILE_PATH)) {
       const configData = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
       return JSON.parse(configData);
@@ -40,7 +53,9 @@ function readConfig(): R2Config {
 // 保存配置
 function saveConfig(config: R2Config): boolean {
   try {
+    ensureConfigDir();
     fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 2), 'utf8');
+    console.log('Config saved successfully to:', CONFIG_FILE_PATH);
     return true;
   } catch (error) {
     console.error('Error saving config file:', error);
@@ -55,6 +70,7 @@ export async function GET() {
   // 部分隐藏敏感信息
   const safeConfig = {
     ...config,
+    accessKeyId: config.accessKeyId ? '********' : '',
     secretAccessKey: config.secretAccessKey ? '********' : '',
   };
   
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Endpoint URL is required' }, { status: 400 });
     }
     
-    if (!config.accessKeyId) {
+    if (!config.accessKeyId && config.accessKeyId !== '********') {
       return NextResponse.json({ error: 'Access Key ID is required' }, { status: 400 });
     }
     
@@ -87,17 +103,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Bucket name is required' }, { status: 400 });
     }
     
-    // 如果密钥是隐藏的，保留原始密钥
+    // 处理掩码秘钥
     const currentConfig = readConfig();
-    if (config.secretAccessKey === '********') {
-      config.secretAccessKey = currentConfig.secretAccessKey;
+    const newConfig = {...config};
+    
+    // 如果密钥是隐藏的，保留原始密钥
+    if (newConfig.accessKeyId === '********' && currentConfig.accessKeyId) {
+      newConfig.accessKeyId = currentConfig.accessKeyId;
+    }
+    
+    if (newConfig.secretAccessKey === '********' && currentConfig.secretAccessKey) {
+      newConfig.secretAccessKey = currentConfig.secretAccessKey;
     }
     
     // 保存配置
-    const saved = saveConfig(config);
+    const saved = saveConfig(newConfig);
     
     if (saved) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ 
+        success: true,
+        message: '配置已保存',
+        // 返回掩码后的配置用于UI显示
+        config: {
+          ...newConfig,
+          accessKeyId: newConfig.accessKeyId ? '********' : '',
+          secretAccessKey: newConfig.secretAccessKey ? '********' : '',
+        }
+      });
     } else {
       return NextResponse.json({ error: 'Failed to save config' }, { status: 500 });
     }

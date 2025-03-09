@@ -29,15 +29,19 @@ export default function Home() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [showImageCarousel, setShowImageCarousel] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
 
   // 加载文件列表
   const loadFiles = async () => {
     try {
       setIsLoading(true);
+      console.log(`Loading files from prefix: "${currentPrefix}"`);
       const response = await fetch(`/api/r2?action=listObjects&prefix=${encodeURIComponent(currentPrefix)}`);
       const data = await response.json();
       
       if (response.ok) {
+        console.log("API response:", data);
+        
         // 将接收到的日期字符串转换回 Date 对象
         const filesWithDates = (data.objects || []).map(file => ({
           ...file,
@@ -45,16 +49,22 @@ export default function Home() {
         }));
         
         setFiles(filesWithDates);
+        console.log("Processed files:", filesWithDates);
         
         // 过滤出图片文件
         const imgExts = ["jpg", "jpeg", "png", "gif", "webp"];
         const imgFiles = filesWithDates.filter(file => {
-          if (file.isFolder) return false;
-          const ext = file.key.split(".").pop()?.toLowerCase() || "";
-          return imgExts.includes(ext);
+          const ext = file.key.split('.').pop()?.toLowerCase() || '';
+          return !file.isFolder && imgExts.includes(ext);
         });
         
         setImageFiles(imgFiles);
+        console.log("Image files:", imgFiles);
+        
+        // 如果有图片文件，加载它们的预签名URL
+        if (imgFiles.length > 0) {
+          loadImageUrls();
+        }
       } else {
         console.error("Error loading files:", data.error);
         toast.error("Failed to load files");
@@ -140,16 +150,33 @@ export default function Home() {
       const data = await response.json();
       
       if (response.ok) {
-        toast.success("File uploaded successfully");
+        toast.success("文件上传成功");
         loadFiles();
       } else {
-        console.error("Error uploading file:", data.error);
-        toast.error("Failed to upload file");
-        throw new Error(data.error);
+        console.error("Error uploading file:", data);
+        
+        // 处理权限错误
+        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
+          toast.error(data.error || "权限错误：没有上传权限", {
+            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
+            duration: 6000,
+            icon: "🔒"
+          });
+          
+          // 设置UI状态为只读模式
+          setIsReadOnlyMode(true);
+        } else {
+          toast.error(data.error || "上传失败", {
+            description: data.detail,
+          });
+        }
+        throw new Error(data.error || "Upload failed");
       }
     } catch (error) {
       console.error("Error uploading file:", error);
-      toast.error("Failed to upload file");
+      toast.error("上传失败", {
+        description: error instanceof Error ? error.message : "未知错误"
+      });
       throw error;
     }
   };
@@ -168,16 +195,33 @@ export default function Home() {
       const data = await response.json();
       
       if (response.ok) {
-        toast.success("File deleted successfully");
+        toast.success("文件删除成功");
         setSelectedFile(null);
         loadFiles();
       } else {
-        console.error("Error deleting file:", data.error);
-        toast.error("Failed to delete file");
+        console.error("Error deleting file:", data);
+        
+        // 处理权限错误
+        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
+          toast.error(data.error || "权限错误：没有删除权限", {
+            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
+            duration: 6000,
+            icon: "🔒"
+          });
+          
+          // 设置UI状态为只读模式
+          setIsReadOnlyMode(true);
+        } else {
+          toast.error(data.error || "删除失败", {
+            description: data.detail,
+          });
+        }
       }
     } catch (error) {
       console.error("Error deleting file:", error);
-      toast.error("Failed to delete file");
+      toast.error("删除失败", {
+        description: error instanceof Error ? error.message : "未知错误"
+      });
     }
   };
 
@@ -185,7 +229,7 @@ export default function Home() {
   const handleBatchDelete = async (files: R2Object[]) => {
     if (files.length === 0) return;
     
-    if (!confirm(`Are you sure you want to delete ${files.length} file(s)?`)) {
+    if (!confirm(`确定要删除选中的 ${files.length} 个文件吗？`)) {
       return;
     }
 
@@ -201,15 +245,32 @@ export default function Home() {
       const data = await response.json();
       
       if (response.ok) {
-        toast.success(`${files.length} file(s) deleted successfully`);
+        toast.success(`成功删除 ${files.length} 个文件`);
         loadFiles();
       } else {
-        console.error("Error deleting files:", data.error);
-        toast.error("Failed to delete files");
+        console.error("Error deleting files:", data);
+        
+        // 处理权限错误
+        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
+          toast.error(data.error || "权限错误：没有删除权限", {
+            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
+            duration: 6000,
+            icon: "🔒"
+          });
+          
+          // 设置UI状态为只读模式
+          setIsReadOnlyMode(true);
+        } else {
+          toast.error(data.error || "批量删除失败", {
+            description: data.detail,
+          });
+        }
       }
     } catch (error) {
       console.error("Error deleting files:", error);
-      toast.error("Failed to delete files");
+      toast.error("批量删除失败", {
+        description: error instanceof Error ? error.message : "未知错误"
+      });
     }
   };
 
@@ -238,14 +299,29 @@ export default function Home() {
         toast.success("文件夹创建成功");
         loadFiles();
       } else {
-        console.error("Error creating folder:", data.error);
-        toast.error("创建文件夹失败");
-        throw new Error(data.error);
+        console.error("Error creating folder:", data);
+        
+        // 处理权限错误
+        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
+          toast.error(data.error || "权限错误：没有创建文件夹权限", {
+            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
+            duration: 6000,
+            icon: "🔒"
+          });
+          
+          // 设置UI状态为只读模式
+          setIsReadOnlyMode(true);
+        } else {
+          toast.error(data.error || "创建文件夹失败", {
+            description: data.detail,
+          });
+        }
       }
     } catch (error) {
       console.error("Error creating folder:", error);
-      toast.error("创建文件夹失败");
-      throw error;
+      toast.error("创建文件夹失败", {
+        description: error instanceof Error ? error.message : "未知错误"
+      });
     }
   };
 
@@ -253,18 +329,29 @@ export default function Home() {
   const loadImageUrls = async () => {
     if (imageFiles.length === 0) return;
     
+    console.log("Loading image URLs for", imageFiles.length, "images");
     const newUrls: { [key: string]: string } = {};
     let hasError = false;
     
     for (const file of imageFiles) {
-      if (imageUrls[file.key]) continue; // 跳过已有 URL 的图片
+      if (imageUrls[file.key]) {
+        console.log(`Skipping ${file.key}, URL already cached`);
+        continue; // 跳过已有 URL 的图片
+      }
       
       try {
+        console.log(`Fetching signed URL for ${file.key}`);
         const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
         const data = await response.json();
         
         if (response.ok) {
-          newUrls[file.key] = data.url;
+          if (data.signedUrl) {
+            console.log(`Got signed URL for ${file.key}`);
+            newUrls[file.key] = data.signedUrl;
+          } else {
+            console.error(`Missing signedUrl in response for ${file.key}:`, data);
+            hasError = true;
+          }
         } else {
           console.error(`Error getting signed URL for ${file.key}:`, data.error);
           hasError = true;
@@ -276,20 +363,40 @@ export default function Home() {
     }
     
     if (Object.keys(newUrls).length > 0) {
+      console.log(`Adding ${Object.keys(newUrls).length} new image URLs`);
       setImageUrls(prev => ({ ...prev, ...newUrls }));
-    }
-    
-    if (hasError) {
-      toast.error("部分图片预览链接获取失败");
+    } else if (hasError) {
+      toast.error("Failed to load some image previews");
     }
   };
   
   // 当图片文件列表变化时，加载预签名 URL
   useEffect(() => {
-    if (imageFiles.length > 0) {
+    const imageFilesArray = Array.isArray(imageFiles) ? imageFiles : [];
+    if (imageFilesArray.length > 0) {
       loadImageUrls();
     }
   }, [imageFiles]);
+
+  // 运行诊断
+  const runDiagnostics = async () => {
+    try {
+      const diagResponse = await fetch('/api/r2/diagnose');
+      const diagData = await diagResponse.json();
+      console.log("=== R2 DIAGNOSTICS ===");
+      console.log(diagData);
+      
+      // 在页面上显示一些重要信息
+      if (diagData.connectionTest?.success) {
+        toast.success("R2 连接成功！发现 " + (diagData.connectionTest.objects?.length || 0) + " 个对象");
+      } else {
+        toast.error("R2 连接失败: " + diagData.connectionTest?.message);
+      }
+    } catch (error) {
+      console.error("诊断错误:", error);
+      toast.error("运行诊断时出错");
+    }
+  };
 
   // 计算预览模式下的图片文件
   const visibleImageFiles = useMemo(() => {
@@ -338,95 +445,160 @@ export default function Home() {
       <div className="p-4 md:p-8">
         <Toaster position="top-right" />
         
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold">文件浏览器</h1>
-          <p className="text-muted-foreground">
-            浏览、上传和管理 Cloudflare R2 存储中的文件
-          </p>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold">文件浏览器</h1>
+            <div className="flex items-center">
+              <p className="text-muted-foreground">
+                {currentPrefix ? `当前目录: ${currentPrefix}` : "根目录"}
+              </p>
+              {isReadOnlyMode && (
+                <div className="ml-2 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded-md text-xs font-medium flex items-center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <path d="M8 11V9l8 8" />
+                  </svg>
+                  只读模式
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         
         <div className="mb-4 flex gap-2 justify-between">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* 视图切换按钮 */}
             <Button
-              variant="outline"
+              variant={viewMode === 'list' ? "default" : "outline"}
               size="sm"
-              onClick={() => setShowNewFolderDialog(true)}
+              onClick={() => setViewMode('list')}
+              className="px-3"
             >
-              <svg
-                className="mr-2"
-                width="16"
-                height="16"
+              <svg 
+                width="16" 
+                height="16" 
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="mr-2"
               >
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-                <line x1="12" y1="10" x2="12" y2="16" />
-                <line x1="9" y1="13" x2="15" y2="13" />
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              列表
+            </Button>
+            
+            <Button
+              variant={viewMode === 'grid' ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode('grid')}
+              className="px-3"
+            >
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-2"
+              >
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+              </svg>
+              图片集
+            </Button>
+            
+            {/* 文件操作按钮 */}
+            <Button 
+              onClick={() => setShowNewFolderDialog(true)}
+              disabled={isReadOnlyMode}
+              title={isReadOnlyMode ? "只读模式下不可用" : "创建新文件夹"}
+              variant="outline"
+              size="sm"
+              className="px-3 ml-4"
+            >
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-2"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                <line x1="12" y1="11" x2="12" y2="17" />
+                <line x1="9" y1="14" x2="15" y2="14" />
               </svg>
               新建文件夹
             </Button>
+            
+            <Button 
+              onClick={() => setShowUploadDialog(true)}
+              disabled={isReadOnlyMode}
+              title={isReadOnlyMode ? "只读模式下不可用" : "上传文件"}
+              variant="outline"
+              size="sm"
+              className="px-3"
+            >
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              上传
+            </Button>
           </div>
           
-          {/* 视图切换按钮，只在有图片时显示 */}
-          {imageFiles.length > 0 && (
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === 'list' ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className="px-3"
-              >
-                <svg 
-                  width="16" 
-                  height="16" 
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mr-2"
-                >
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-                列表
-              </Button>
-              
-              <Button
-                variant={viewMode === 'grid' ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="px-3"
-              >
-                <svg 
-                  width="16" 
-                  height="16" 
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mr-2"
-                >
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
-                </svg>
-                图片集
-              </Button>
-            </div>
-          )}
+          {/* 诊断按钮 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runDiagnostics}
+            className="ml-auto"
+            title="运行 R2 诊断"
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mr-2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12" y2="8" />
+            </svg>
+            诊断
+          </Button>
         </div>
         
         {viewMode === 'list' ? (
@@ -475,6 +647,7 @@ export default function Home() {
               setSignedUrl("");
             }}
             onDelete={handleDelete}
+            isReadOnly={isReadOnlyMode}
           />
         )}
         
