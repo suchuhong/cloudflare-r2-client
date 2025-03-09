@@ -30,7 +30,8 @@ export function UploadDialog({ currentPrefix, onUpload, onClose }: UploadDialogP
 
     try {
       setIsUploading(true);
-      const key = currentPrefix + customFilename;
+      const prefix = currentPrefix ? (currentPrefix.endsWith('/') ? currentPrefix : `${currentPrefix}/`) : '';
+      const key = prefix + customFilename;
       await onUpload(selectedFile, key);
       onClose();
     } catch (error) {

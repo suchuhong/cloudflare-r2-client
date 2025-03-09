@@ -100,12 +100,14 @@ export async function GET(request: NextRequest) {
         const client = getR2Client();
         const command = new ListObjectsV2Command({ 
           Bucket: r2Config.bucketName,
-          Prefix: prefix 
+          Prefix: prefix,
+          Delimiter: '/' // 使用分隔符获取分层结构
         });
         
         const response = await client.send(command);
         
-        const objects = response.Contents 
+        // 处理常规文件
+        let objects = response.Contents 
           ? response.Contents.map(item => ({
               key: item.Key || '',
               size: item.Size || 0,
@@ -113,6 +115,21 @@ export async function GET(request: NextRequest) {
               etag: item.ETag
             }))
           : [];
+        
+        // 处理"文件夹"（公共前缀）
+        const folders = response.CommonPrefixes
+          ? response.CommonPrefixes.map(prefix => ({
+              key: prefix.Prefix || '',
+              size: 0,
+              lastModified: new Date(),
+              isFolder: true
+            }))
+          : [];
+        
+        // 合并文件和文件夹，但过滤掉当前目录
+        objects = [...objects, ...folders].filter(item => 
+          item.key !== prefix && item.key !== prefix + '/'
+        );
           
         return NextResponse.json({ objects });
       }

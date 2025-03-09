@@ -62,15 +62,25 @@ export function FileExplorer({
 
   const getParentPrefix = () => {
     if (!currentPrefix || currentPrefix === "") return "";
-    const parts = currentPrefix.split("/");
+    const parts = currentPrefix.split("/").filter(Boolean);
+    if (parts.length === 0) return "";
+    
     parts.pop(); // 移除最后一个部分
-    return parts.join("/");
+    if (parts.length === 0) return "";
+    
+    return parts.join("/") + "/";
   };
 
   const breadcrumbs = () => {
     if (!currentPrefix) return [{ name: "Root", prefix: "" }];
 
-    const parts = currentPrefix.split("/").filter(Boolean);
+    // 确保处理干净的路径，移除开头和结尾的斜杠
+    const cleanPrefix = currentPrefix.replace(/^\/+|\/+$/g, "");
+    
+    // 如果前缀为空（清理后），只返回根目录
+    if (!cleanPrefix) return [{ name: "Root", prefix: "" }];
+    
+    const parts = cleanPrefix.split("/").filter(Boolean);
     const breadcrumbs = [{ name: "Root", prefix: "" }];
 
     let cumulativePath = "";
@@ -194,8 +204,9 @@ export function FileExplorer({
               )}
               {filteredFiles.map((file) => {
                 const fileName = file.key.split("/").pop() || file.key;
-                const isFolder = fileName.endsWith("/");
-                const displayName = isFolder ? fileName.slice(0, -1) : fileName;
+                // 优先使用 API 返回的 isFolder 标志，如果没有则根据文件名判断
+                const isFolder = file.isFolder || fileName.endsWith("/");
+                const displayName = isFolder && fileName.endsWith("/") ? fileName.slice(0, -1) : fileName;
 
                 return (
                   <div
@@ -203,7 +214,8 @@ export function FileExplorer({
                     className="grid grid-cols-[auto_1fr_auto_auto] gap-2 p-2 hover:bg-muted/50 cursor-pointer border-b"
                     onClick={() => {
                       if (isFolder) {
-                        onNavigate(file.key);
+                        const folderPath = file.key.endsWith('/') ? file.key : `${file.key}/`;
+                        onNavigate(folderPath);
                       } else {
                         onFileClick(file);
                       }

@@ -5,4 +5,5 @@ export interface R2Object {
   lastModified: Date;
   etag?: string;
   contentType?: string;
+  isFolder?: boolean; // 表示这是一个文件夹
 } 

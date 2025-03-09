@@ -6,12 +6,11 @@ import { FileExplorer } from "@/components/file-explorer";
 import { UploadDialog } from "@/components/upload-dialog";
 import { FilePreview } from "@/components/file-preview";
 import { R2Object } from "@/lib/r2-types";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { NewFolderDialog } from "@/components/new-folder-dialog";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { useConfig } from "@/contexts/config-context";
 import { Loading } from "@/components/loading";
+import { LayoutWithSidebar } from "@/components/layout-with-sidebar";
 
 export default function Home() {
   const { isConfigValid, isLoading: isConfigLoading } = useConfig();
@@ -171,7 +170,9 @@ export default function Home() {
   // 处理创建文件夹
   const handleCreateFolder = async (folderName: string) => {
     try {
-      const key = currentPrefix + folderName;
+      // 确保 currentPrefix 末尾有斜杠，若已存在则不添加
+      const prefix = currentPrefix ? (currentPrefix.endsWith('/') ? currentPrefix : `${currentPrefix}/`) : '';
+      const key = prefix + folderName;
       const response = await fetch('/api/r2?action=createFolder', {
         method: 'POST',
         headers: {
@@ -197,17 +198,18 @@ export default function Home() {
     }
   };
 
+  // 对于加载和错误状态，显示全屏幕消息
   if (isConfigLoading) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-4">
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <Loading text="正在加载配置..." />
-      </main>
+      </div>
     );
   }
 
   if (!isConfigValid) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-4">
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
           <h1 className="text-2xl font-bold mb-4">配置不完整</h1>
           <p className="mb-4">
@@ -215,93 +217,88 @@ export default function Home() {
           </p>
           <div className="flex justify-center mt-4">
             <Button asChild>
-              <Link href="/settings">转到设置</Link>
+              <a href="/settings">转到设置</a>
             </Button>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
-
+  
+  // 对于主内容，使用带侧边栏的布局
   return (
-    <main className="flex min-h-screen flex-col p-4 md:p-8">
-      <Toaster position="top-right" />
-      
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Cloudflare R2 Client</h1>
+    <LayoutWithSidebar>
+      <div className="p-4 md:p-8">
+        <Toaster position="top-right" />
+        
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">文件浏览器</h1>
           <p className="text-muted-foreground">
-            Browse, upload, and manage your files in Cloudflare R2 storage
+            浏览、上传和管理 Cloudflare R2 存储中的文件
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <Button variant="outline" asChild>
-            <Link href="/settings">设置</Link>
+        
+        <div className="mb-4 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowNewFolderDialog(true)}
+          >
+            <svg
+              className="mr-2"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+              <line x1="12" y1="10" x2="12" y2="16" />
+              <line x1="9" y1="13" x2="15" y2="13" />
+            </svg>
+            新建文件夹
           </Button>
         </div>
-      </div>
-      
-      <div className="mb-4 flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowNewFolderDialog(true)}
-        >
-          <svg
-            className="mr-2"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-            <line x1="12" y1="10" x2="12" y2="16" />
-            <line x1="9" y1="13" x2="15" y2="13" />
-          </svg>
-          新建文件夹
-        </Button>
-      </div>
-      
-      <FileExplorer
-        files={files}
-        currentPrefix={currentPrefix}
-        isLoading={isLoading}
-        onFileClick={handleFileClick}
-        onUploadClick={() => setShowUploadDialog(true)}
-        onDeleteClick={handleBatchDelete}
-        onNavigate={handleNavigate}
-        onRefresh={loadFiles}
-      />
-      
-      {showUploadDialog && (
-        <UploadDialog
+        
+        <FileExplorer
+          files={files}
           currentPrefix={currentPrefix}
-          onUpload={handleUpload}
-          onClose={() => setShowUploadDialog(false)}
+          isLoading={isLoading}
+          onFileClick={handleFileClick}
+          onUploadClick={() => setShowUploadDialog(true)}
+          onDeleteClick={handleBatchDelete}
+          onNavigate={handleNavigate}
+          onRefresh={loadFiles}
         />
-      )}
-      
-      {showNewFolderDialog && (
-        <NewFolderDialog
-          currentPrefix={currentPrefix}
-          onCreateFolder={handleCreateFolder}
-          onClose={() => setShowNewFolderDialog(false)}
-        />
-      )}
-      
-      {selectedFile && signedUrl && (
-        <FilePreview
-          file={selectedFile}
-          signedUrl={signedUrl}
-          onClose={() => setSelectedFile(null)}
-          onDelete={handleDelete}
-        />
-      )}
-    </main>
+        
+        {showUploadDialog && (
+          <UploadDialog
+            currentPrefix={currentPrefix}
+            onUpload={handleUpload}
+            onClose={() => setShowUploadDialog(false)}
+          />
+        )}
+        
+        {showNewFolderDialog && (
+          <NewFolderDialog
+            currentPrefix={currentPrefix}
+            onCreateFolder={handleCreateFolder}
+            onClose={() => setShowNewFolderDialog(false)}
+          />
+        )}
+        
+        {selectedFile && signedUrl && (
+          <FilePreview
+            file={selectedFile}
+            signedUrl={signedUrl}
+            onClose={() => setSelectedFile(null)}
+            onDelete={handleDelete}
+          />
+        )}
+      </div>
+    </LayoutWithSidebar>
   );
 }
