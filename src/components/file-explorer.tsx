@@ -12,6 +12,7 @@ interface FileExplorerProps {
   files: R2Object[];
   currentPrefix: string;
   isLoading: boolean;
+  imageUrls?: { [key: string]: string };
   onFileClick: (file: R2Object) => void;
   onUploadClick: () => void;
   onDeleteClick: (files: R2Object[]) => void;
@@ -29,6 +30,7 @@ export function FileExplorer({
   files,
   currentPrefix,
   isLoading,
+  imageUrls = {},
   onFileClick,
   onUploadClick,
   onDeleteClick,
@@ -99,6 +101,12 @@ export function FileExplorer({
   useEffect(() => {
     setSelectedFiles([]);
   }, [currentPrefix]);
+
+  // 检查文件是否是图片
+  const isImageFile = (filename: string): boolean => {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+  };
 
   return (
     <Card className="w-full">
@@ -207,6 +215,8 @@ export function FileExplorer({
                 // 优先使用 API 返回的 isFolder 标志，如果没有则根据文件名判断
                 const isFolder = file.isFolder || fileName.endsWith("/");
                 const displayName = isFolder && fileName.endsWith("/") ? fileName.slice(0, -1) : fileName;
+                const isImage = !isFolder && isImageFile(fileName);
+                const hasPreview = isImage && imageUrls[file.key];
 
                 return (
                   <div
@@ -238,7 +248,17 @@ export function FileExplorer({
                       />
                     </div>
                     <div className="flex items-center gap-2 truncate">
-                      <FileIcon filename={file.key} />
+                      {hasPreview ? (
+                        <div className="w-6 h-6 rounded overflow-hidden flex-shrink-0">
+                          <img 
+                            src={imageUrls[file.key]} 
+                            alt={displayName}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <FileIcon filename={file.key} />
+                      )}
                       <span className="truncate">{displayName}</span>
                     </div>
                     <div className="text-sm text-muted-foreground whitespace-nowrap">

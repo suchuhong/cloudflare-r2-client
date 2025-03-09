@@ -1,0 +1,78 @@
+"use client";
+
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { R2Object } from "@/lib/r2-types";
+import { formatFileSize } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+interface ImageGridProps {
+  files: R2Object[];
+  imageUrls: { [key: string]: string };
+  onImageClick: (file: R2Object) => void;
+  onViewListMode: () => void;
+}
+
+export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: ImageGridProps) {
+  // 只显示有预览URL的图片
+  const imagesWithPreview = files.filter(file => imageUrls[file.key]);
+
+  return (
+    <Card className="w-full">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle>图片集</CardTitle>
+        <Button variant="outline" size="sm" onClick={onViewListMode}>
+          <svg 
+            className="mr-2"
+            width="16" 
+            height="16" 
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+          列表视图
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {imagesWithPreview.length === 0 ? (
+          <div className="flex justify-center items-center h-40 text-muted-foreground">
+            <p>没有可预览的图片</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {imagesWithPreview.map((file) => {
+              const fileName = file.key.split("/").pop() || file.key;
+              return (
+                <div 
+                  key={file.key}
+                  className="group relative aspect-square rounded-md overflow-hidden border cursor-pointer hover:opacity-95 transition-all hover:shadow-md"
+                  onClick={() => onImageClick(file)}
+                >
+                  <img 
+                    src={imageUrls[file.key]} 
+                    alt={fileName}
+                    className="w-full h-full object-cover" 
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                    <p className="text-white text-sm truncate">{fileName}</p>
+                    <p className="text-white/80 text-xs">{formatFileSize(file.size)}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+} 

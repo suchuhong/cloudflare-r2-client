@@ -27,19 +27,46 @@ export function FilePreview({ file, signedUrl, onClose, onDelete }: FilePreviewP
   const isVideo = ["mp4", "webm", "ogg"].includes(extension);
   const isAudio = ["mp3", "wav", "ogg"].includes(extension);
   
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        e.stopPropagation();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+  
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div 
+        className="absolute inset-0" 
+        onClick={onClose}
+        aria-label="点击关闭"
+      />
+      
+      <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col relative z-10">
         <CardHeader className="pb-2">
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2 truncate">
               <FileIcon filename={file.key} />
               <span className="truncate">{fileName}</span>
             </CardTitle>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={onClose}
+              className="hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-1"
+              title="关闭预览 (ESC)"
+            >
+              <span className="text-sm">关闭</span>
               <svg
-                width="16"
-                height="16"
+                width="18"
+                height="18"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
