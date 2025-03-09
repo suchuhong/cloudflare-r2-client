@@ -28,6 +28,17 @@
 - [Sonner](https://sonner.emilkowal.ski/) - 通知组件
 - [next-themes](https://github.com/pacocoursey/next-themes) - 主题管理
 
+## 演示
+
+[演示链接](https://cloudflare-r2-client-git-main-suchs-projects-a2322d78.vercel.app/)
+
+[封面](./img/image1.png)
+
+[封面](./img/image2.png)
+
+[设置](./img/image3.png)
+
+
 ## 快速开始
 
 ### 前提条件
