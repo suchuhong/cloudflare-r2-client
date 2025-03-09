@@ -16,6 +16,42 @@ interface R2Config {
   bucketName: string;
 }
 
+// 定义配置状态的接口
+interface ConfigStatus {
+  configDir?: {
+    path?: string;
+    exists?: boolean;
+    isWritable?: boolean;
+  };
+  configFile?: {
+    path?: string;
+    exists?: boolean;
+    stats?: {
+      mtime?: string | Date;
+      size?: number;
+      [key: string]: unknown;
+    };
+    content?: {
+      endpoint?: string;
+      region?: string;
+      accessKeyId?: string;
+      secretAccessKey?: string;
+      bucketName?: string;
+      [key: string]: unknown;
+    };
+  };
+  systemInfo?: {
+    platform?: string;
+    cwd?: string;
+    homedir?: string;
+    tmpdir?: string;
+    username?: string;
+    nodeVersion?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<R2Config>({
     endpoint: "",
@@ -29,7 +65,7 @@ export default function SettingsPage() {
   const [isTesting, setIsTesting] = useState(false);
   const [showAccessKey, setShowAccessKey] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
-  const [configStatus, setConfigStatus] = useState<any>(null);
+  const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
 
   // 加载配置
@@ -268,7 +304,7 @@ export default function SettingsPage() {
                     onChange={(e) => setConfig({ ...config, region: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    R2 区域，通常为 "auto"
+                    R2 区域，通常为 &quot;auto&quot;
                   </p>
                 </div>
                 
@@ -418,7 +454,7 @@ export default function SettingsPage() {
                     <p className="text-sm">存在: {configStatus.configFile?.exists ? "是" : "否"}</p>
                     {configStatus.configFile?.stats && (
                       <p className="text-sm">
-                        最后修改: {new Date(configStatus.configFile.stats.mtime).toLocaleString()}
+                        最后修改: {configStatus.configFile.stats.mtime ? new Date(configStatus.configFile.stats.mtime).toLocaleString() : '未知'}
                       </p>
                     )}
                   </div>

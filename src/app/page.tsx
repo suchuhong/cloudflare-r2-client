@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Toaster, toast } from "sonner";
 import { FileExplorer } from "@/components/file-explorer";
 import { UploadDialog } from "@/components/upload-dialog";
@@ -32,7 +32,7 @@ export default function Home() {
   const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
 
   // 加载文件列表
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     try {
       setIsLoading(true);
       console.log(`Loading files from prefix: "${currentPrefix}"`);
@@ -43,7 +43,7 @@ export default function Home() {
         console.log("API response:", data);
         
         // 将接收到的日期字符串转换回 Date 对象
-        const filesWithDates = (data.objects || []).map(file => ({
+        const filesWithDates = (data.objects || []).map((file: Omit<R2Object, 'lastModified'> & { lastModified: string }) => ({
           ...file,
           lastModified: new Date(file.lastModified)
         }));
@@ -53,7 +53,7 @@ export default function Home() {
         
         // 过滤出图片文件
         const imgExts = ["jpg", "jpeg", "png", "gif", "webp"];
-        const imgFiles = filesWithDates.filter(file => {
+        const imgFiles = filesWithDates.filter((file: R2Object) => {
           const ext = file.key.split('.').pop()?.toLowerCase() || '';
           return !file.isFolder && imgExts.includes(ext);
         });
@@ -66,23 +66,23 @@ export default function Home() {
           loadImageUrls();
         }
       } else {
-        console.error("Error loading files:", data.error);
-        toast.error("Failed to load files");
+        console.error("API error:", data);
+        toast.error("加载文件失败: " + (data.error || "未知错误"));
       }
     } catch (error) {
       console.error("Error loading files:", error);
-      toast.error("Failed to load files");
+      toast.error("加载文件失败");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPrefix]);
 
-  // 监听前缀变化重新加载文件
+  // 当配置或前缀改变时加载文件
   useEffect(() => {
     if (isConfigValid) {
       loadFiles();
     }
-  }, [currentPrefix, isConfigValid]);
+  }, [isConfigValid, currentPrefix, loadFiles]);
 
   // 处理文件点击
   const handleFileClick = async (file: R2Object) => {
@@ -326,57 +326,36 @@ export default function Home() {
   };
 
   // 加载所有图片的预签名 URL
-  const loadImageUrls = async () => {
-    if (imageFiles.length === 0) return;
+  const loadImageUrls = useCallback(async () => {
+    if (!Array.isArray(imageFiles) || imageFiles.length === 0) return;
     
-    console.log("Loading image URLs for", imageFiles.length, "images");
-    const newUrls: { [key: string]: string } = {};
-    let hasError = false;
-    
-    for (const file of imageFiles) {
-      if (imageUrls[file.key]) {
-        console.log(`Skipping ${file.key}, URL already cached`);
-        continue; // 跳过已有 URL 的图片
-      }
-      
+    const urls: { [key: string]: string } = {};
+    const loadPromises = imageFiles.map(async (file) => {
       try {
-        console.log(`Fetching signed URL for ${file.key}`);
-        const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
-        const data = await response.json();
+        if (file.isFolder) return; // 跳过文件夹
         
-        if (response.ok) {
-          if (data.signedUrl) {
-            console.log(`Got signed URL for ${file.key}`);
-            newUrls[file.key] = data.signedUrl;
-          } else {
-            console.error(`Missing signedUrl in response for ${file.key}:`, data);
-            hasError = true;
-          }
-        } else {
-          console.error(`Error getting signed URL for ${file.key}:`, data.error);
-          hasError = true;
+        const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (data.signedUrl) {
+          urls[file.key] = data.signedUrl;
         }
       } catch (error) {
-        console.error(`Error getting signed URL for ${file.key}:`, error);
-        hasError = true;
+        console.error(`Error loading URL for ${file.key}:`, error);
       }
-    }
+    });
     
-    if (Object.keys(newUrls).length > 0) {
-      console.log(`Adding ${Object.keys(newUrls).length} new image URLs`);
-      setImageUrls(prev => ({ ...prev, ...newUrls }));
-    } else if (hasError) {
-      toast.error("Failed to load some image previews");
-    }
-  };
+    await Promise.all(loadPromises);
+    setImageUrls(urls);
+  }, [imageFiles]);
   
-  // 当图片文件列表变化时，加载预签名 URL
+  // 当文件列表改变时加载图片URL
   useEffect(() => {
-    const imageFilesArray = Array.isArray(imageFiles) ? imageFiles : [];
-    if (imageFilesArray.length > 0) {
+    if (files.length > 0) {
       loadImageUrls();
     }
-  }, [imageFiles]);
+  }, [files, loadImageUrls]);
 
   // 运行诊断
   const runDiagnostics = async () => {

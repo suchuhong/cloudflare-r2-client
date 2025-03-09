@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
         const folderKey = key.endsWith('/') ? key : `${key}/`;
         
         const client = getR2Client();
+        const config = readConfig(); // 获取配置
         const command = new PutObjectCommand({
           Bucket: config.bucketName,
           Key: folderKey,
@@ -371,24 +372,27 @@ export async function PUT(request: NextRequest) {
     }
 
     const fileBuffer = await request.arrayBuffer();
-    const client = getR2Client();
-    const config = readConfig(); // 获取配置
-    
-    const command = new PutObjectCommand({
-      Bucket: config.bucketName,
-      Key: key,
-      Body: Buffer.from(fileBuffer),
-      ContentType: contentType,
-    });
     
     try {
+      const client = getR2Client();
+      const config = readConfig(); // 获取配置
+      
+      const command = new PutObjectCommand({
+        Bucket: config.bucketName,
+        Key: key,
+        Body: Buffer.from(fileBuffer),
+        ContentType: contentType,
+      });
+      
       await client.send(command);
       return NextResponse.json({ success: true });
-    } catch (uploadError: any) {
+    } catch (uploadError: unknown) {
       console.error('R2 Upload error:', uploadError);
       
       // 处理访问权限错误
-      if (uploadError.name === 'AccessDenied' || uploadError.Code === 'AccessDenied') {
+      const err = uploadError as { Code?: string; name?: string; message?: string };
+      
+      if (err.name === 'AccessDenied' || err.Code === 'AccessDenied') {
         return NextResponse.json({ 
           error: '当前账号没有上传权限，请检查 R2 API 令牌的权限设置', 
           errorCode: 'ACCESS_DENIED',
@@ -397,11 +401,11 @@ export async function PUT(request: NextRequest) {
       }
       
       // 其他 S3 错误
-      if (uploadError.Code) {
+      if (err.Code) {
         return NextResponse.json({ 
-          error: `上传失败: ${uploadError.Code}`, 
-          errorCode: uploadError.Code,
-          detail: uploadError.message || '未知错误'
+          error: `上传失败: ${err.Code}`, 
+          errorCode: err.Code,
+          detail: err.message || '未知错误'
         }, { status: 500 });
       }
       
@@ -409,14 +413,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ 
         error: '上传失败', 
         errorCode: 'UPLOAD_FAILED',
-        detail: uploadError.message || '未知错误'
+        detail: err.message || '未知错误'
       }, { status: 500 });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Request processing error:', error);
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
     return NextResponse.json({ 
       error: '处理上传请求时出错', 
-      detail: error.message || '未知错误'
+      detail: errorMessage
     }, { status: 500 });
   }
 } 

@@ -17,6 +17,17 @@ interface R2Config {
   bucketName: string;
 }
 
+// 诊断测试结果接口
+interface R2ConnectionTest {
+  success: boolean;
+  message: string;
+  objects: Array<{
+    key?: string;
+    size?: number;
+    lastModified?: Date;
+  }>;
+}
+
 // 读取配置
 function readConfig(): R2Config {
   try {
@@ -60,7 +71,11 @@ export async function GET() {
     };
     
     // 尝试连接 R2
-    let connectionTest = { success: false, message: '', objects: [] };
+    let connectionTest: R2ConnectionTest = { 
+      success: false, 
+      message: '', 
+      objects: [] 
+    };
     
     if (config.endpoint && config.accessKeyId && config.secretAccessKey && config.bucketName) {
       try {
@@ -77,7 +92,7 @@ export async function GET() {
         
         // 尝试列出存储桶
         const bucketCommand = new ListBucketsCommand({});
-        const bucketResponse = await client.send(bucketCommand);
+        await client.send(bucketCommand);
         
         // 尝试列出对象
         const listCommand = new ListObjectsV2Command({
@@ -87,19 +102,22 @@ export async function GET() {
         
         const listResponse = await client.send(listCommand);
         
+        const objectList = listResponse.Contents?.map(obj => ({
+          key: obj.Key,
+          size: obj.Size,
+          lastModified: obj.LastModified,
+        })) || [];
+        
         connectionTest = {
           success: true,
           message: 'Successfully connected to R2',
-          objects: listResponse.Contents?.map(obj => ({
-            key: obj.Key,
-            size: obj.Size,
-            lastModified: obj.LastModified,
-          })) || [],
+          objects: objectList,
         };
-      } catch (error: any) {
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         connectionTest = {
           success: false,
-          message: `Connection error: ${error.message || 'Unknown error'}`,
+          message: `Connection error: ${errorMessage}`,
           objects: [],
         };
       }
@@ -117,9 +135,10 @@ export async function GET() {
       connectionTest,
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({
-      error: `Diagnostic error: ${error.message || 'Unknown error'}`,
+      error: `Diagnostic error: ${errorMessage}`,
       timestamp: new Date().toISOString(),
     }, { status: 500 });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 
 interface ImagePreviewProps {
@@ -15,23 +15,22 @@ export function ImagePreview({ src, alt, onClose }: ImagePreviewProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // 处理全屏切换
-  const toggleFullscreen = () => {
+  // 切换全屏模式
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-      }).catch(err => {
-        console.error(`全屏切换错误: ${err.message}`);
-      });
+      if (containerRef.current?.requestFullscreen) {
+        containerRef.current.requestFullscreen().catch(err => {
+          console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+      }
     } else {
-      document.exitFullscreen().then(() => {
-        setIsFullscreen(false);
-      }).catch(err => {
-        console.error(`退出全屏错误: ${err.message}`);
-      });
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
     }
-  };
+  }, []);
 
   // 监听全屏变化
   useEffect(() => {
@@ -46,12 +45,12 @@ export function ImagePreview({ src, alt, onClose }: ImagePreviewProps) {
   }, []);
 
   // 缩放控制
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 3));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
-  const handleResetZoom = () => {
+  const handleZoomIn = useCallback(() => setScale(prev => Math.min(prev + 0.25, 3)), []);
+  const handleZoomOut = useCallback(() => setScale(prev => Math.max(prev - 0.25, 0.5)), []);
+  const handleResetZoom = useCallback(() => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
-  };
+  }, []);
 
   // 拖拽控制
   const handleMouseDown = (e: React.MouseEvent) => {

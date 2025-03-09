@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { S3Client, HeadBucketCommand, S3ServiceException } from '@aws-sdk/client-s3';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 
@@ -48,12 +48,14 @@ function readCurrentConfig(): R2Config {
   };
 }
 
-// 定义扩展的错误类型
-interface S3ExtendedError extends S3ServiceException {
+// 定义错误类型
+interface S3ExtendedError {
   $metadata?: {
     httpStatusCode?: number;
   };
   name?: string;
+  message?: string;
+  Code?: string;
 }
 
 export async function POST(request: NextRequest) {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { R2Object } from "@/lib/r2-types";
 import { formatFileSize } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Image from "next/image";
 
 interface ImageGridProps {
   files: R2Object[];
@@ -77,11 +78,17 @@ export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: Im
                   onMouseEnter={() => setHoverImageKey(file.key)}
                   onMouseLeave={() => setHoverImageKey(null)}
                 >
-                  <img 
-                    src={imageUrls[file.key]} 
-                    alt={fileName}
-                    className="w-full h-full object-cover" 
-                  />
+                  <div className="relative w-full h-0 pb-[100%] overflow-hidden rounded-md bg-muted">
+                    <Image
+                      src={imageUrls[file.key] || ""}
+                      alt={file.key.split('/').pop() || ""}
+                      fill
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover"
+                      quality={80}
+                      unoptimized={process.env.NODE_ENV === 'development'}
+                    />
+                  </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
                     <p className="text-white text-sm truncate">{fileName}</p>
                     <p className="text-white/80 text-xs">{formatFileSize(file.size)}</p>
@@ -105,10 +112,14 @@ export function ImageGrid({ files, imageUrls, onImageClick, onViewListMode }: Im
             }}
           >
             <div className="relative">
-              <img 
+              <Image 
                 src={imageUrls[hoverImageKey]} 
-                alt="预览" 
-                className="max-w-[400px] max-h-[400px] object-contain"
+                alt={hoverImageKey.split('/').pop() || ""} 
+                width={240}
+                height={180}
+                className="rounded-md object-cover"
+                quality={75}
+                unoptimized={process.env.NODE_ENV === 'development'}
               />
               <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-2">
                 <p className="truncate">{hoverImageKey.split('/').pop()}</p>
