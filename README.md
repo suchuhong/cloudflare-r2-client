@@ -32,11 +32,11 @@
 
 [演示链接](https://cloudflare-r2-client-git-main-suchs-projects-a2322d78.vercel.app/)
 
-[封面](./img/image1.png)
+![封面](./img/image1.png)
 
-[封面](./img/image2.png)
+![封面](./img/image2.png)
 
-[设置](./img/image3.png)
+![设置](./img/image3.png)
 
 
 ## 快速开始
