@@ -15,7 +15,7 @@ import { ImageCarousel } from "@/components/image-carousel";
 import { ImageGrid } from "@/components/image-grid";
 
 export default function Home() {
-  const { isConfigValid, isLoading: isConfigLoading } = useConfig();
+  const { isConfigValid, isLoading: isConfigLoading, config } = useConfig();
   
   const [files, setFiles] = useState<R2Object[]>([]);
   const [currentPrefix, setCurrentPrefix] = useState("");
@@ -29,14 +29,29 @@ export default function Home() {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [showImageCarousel, setShowImageCarousel] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
+
+  // 添加开发模式检测
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
   // 加载文件列表
   const loadFiles = useCallback(async () => {
     try {
       setIsLoading(true);
+      
+      if (!config) {
+        toast.error("请先完成 R2 配置");
+        setIsLoading(false);
+        return;
+      }
+      
       console.log(`Loading files from prefix: "${currentPrefix}"`);
-      const response = await fetch(`/api/r2?action=listObjects&prefix=${encodeURIComponent(currentPrefix)}`);
+      
+      // 将配置序列化并编码以传递给API
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      
+      const response = await fetch(
+        `/api/r2?action=listObjects&prefix=${encodeURIComponent(currentPrefix)}&config=${configParam}`
+      );
       const data = await response.json();
       
       if (response.ok) {
@@ -75,271 +90,41 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPrefix]);
+  }, [currentPrefix, config]);
 
-  // 当配置或前缀改变时加载文件
-  useEffect(() => {
-    if (isConfigValid) {
-      loadFiles();
-    }
-  }, [isConfigValid, currentPrefix, loadFiles]);
-
-  // 处理文件点击
-  const handleFileClick = async (file: R2Object) => {
+  // 获取签名 URL
+  const getSignedUrl = useCallback(async (fileKey: string) => {
+    if (!config) return "";
+    
     try {
-      setSelectedFile(file);
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(fileKey)}&config=${configParam}`);
       
-      // 检查是否是图片
-      const fileName = file.key.split("/").pop() || "";
-      const ext = fileName.split(".").pop()?.toLowerCase() || "";
-      const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
-      
-      if (isImage) {
-        // 如果是图片，检查是否已有 URL
-        if (!imageUrls[file.key]) {
-          const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
-          const data = await response.json();
-          
-          if (response.ok) {
-            setImageUrls(prev => ({ ...prev, [file.key]: data.url }));
-            setSignedUrl(data.url);
-          } else {
-            console.error("Error getting signed URL:", data.error);
-            toast.error("Failed to generate download link");
-            return;
-          }
-        } else {
-          setSignedUrl(imageUrls[file.key]);
-        }
-        
-        // 找到当前图片在图片文件数组中的索引
-        const index = imageFiles.findIndex(img => img.key === file.key);
-        if (index !== -1) {
-          setCarouselIndex(index);
-          setShowImageCarousel(true);
-        }
-      } else {
-        // 如果不是图片，获取常规链接
-        const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
-        const data = await response.json();
-        
-        if (response.ok) {
-          setSignedUrl(data.url);
-        } else {
-          console.error("Error getting signed URL:", data.error);
-          toast.error("Failed to generate download link");
-        }
+      if (!response.ok) {
+        throw new Error("获取签名URL失败");
       }
+      
+      const data = await response.json();
+      return data.signedUrl || "";
     } catch (error) {
       console.error("Error getting signed URL:", error);
-      toast.error("Failed to generate download link");
+      toast.error("获取预览链接失败");
+      return "";
     }
-  };
+  }, [config]);
 
-  // 处理文件上传
-  const handleUpload = async (file: File, key: string) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`/api/r2?key=${encodeURIComponent(key)}&contentType=${encodeURIComponent(file.type)}`, {
-        method: 'PUT',
-        body: file
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        toast.success("文件上传成功");
-        loadFiles();
-      } else {
-        console.error("Error uploading file:", data);
-        
-        // 处理权限错误
-        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
-          toast.error(data.error || "权限错误：没有上传权限", {
-            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
-            duration: 6000,
-            icon: "🔒"
-          });
-          
-          // 设置UI状态为只读模式
-          setIsReadOnlyMode(true);
-        } else {
-          toast.error(data.error || "上传失败", {
-            description: data.detail,
-          });
-        }
-        throw new Error(data.error || "Upload failed");
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      toast.error("上传失败", {
-        description: error instanceof Error ? error.message : "未知错误"
-      });
-      throw error;
-    }
-  };
-
-  // 处理文件删除
-  const handleDelete = async (file: R2Object) => {
-    try {
-      const response = await fetch('/api/r2?action=deleteObject', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ key: file.key }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        toast.success("文件删除成功");
-        setSelectedFile(null);
-        loadFiles();
-      } else {
-        console.error("Error deleting file:", data);
-        
-        // 处理权限错误
-        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
-          toast.error(data.error || "权限错误：没有删除权限", {
-            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
-            duration: 6000,
-            icon: "🔒"
-          });
-          
-          // 设置UI状态为只读模式
-          setIsReadOnlyMode(true);
-        } else {
-          toast.error(data.error || "删除失败", {
-            description: data.detail,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error deleting file:", error);
-      toast.error("删除失败", {
-        description: error instanceof Error ? error.message : "未知错误"
-      });
-    }
-  };
-
-  // 处理批量删除
-  const handleBatchDelete = async (files: R2Object[]) => {
-    if (files.length === 0) return;
-    
-    if (!confirm(`确定要删除选中的 ${files.length} 个文件吗？`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/r2?action=deleteObjects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ keys: files.map(file => file.key) }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        toast.success(`成功删除 ${files.length} 个文件`);
-        loadFiles();
-      } else {
-        console.error("Error deleting files:", data);
-        
-        // 处理权限错误
-        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
-          toast.error(data.error || "权限错误：没有删除权限", {
-            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
-            duration: 6000,
-            icon: "🔒"
-          });
-          
-          // 设置UI状态为只读模式
-          setIsReadOnlyMode(true);
-        } else {
-          toast.error(data.error || "批量删除失败", {
-            description: data.detail,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error deleting files:", error);
-      toast.error("批量删除失败", {
-        description: error instanceof Error ? error.message : "未知错误"
-      });
-    }
-  };
-
-  // 处理导航
-  const handleNavigate = (prefix: string) => {
-    setCurrentPrefix(prefix);
-  };
-
-  // 处理创建文件夹
-  const handleCreateFolder = async (folderName: string) => {
-    try {
-      // 确保 currentPrefix 末尾有斜杠，若已存在则不添加
-      const prefix = currentPrefix ? (currentPrefix.endsWith('/') ? currentPrefix : `${currentPrefix}/`) : '';
-      const key = prefix + folderName;
-      const response = await fetch('/api/r2?action=createFolder', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ key }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        toast.success("文件夹创建成功");
-        loadFiles();
-      } else {
-        console.error("Error creating folder:", data);
-        
-        // 处理权限错误
-        if (response.status === 403 || data.errorCode === 'ACCESS_DENIED') {
-          toast.error(data.error || "权限错误：没有创建文件夹权限", {
-            description: data.detail || "您的 R2 令牌不具备写入权限，请联系管理员更新令牌权限或使用只读模式浏览文件。",
-            duration: 6000,
-            icon: "🔒"
-          });
-          
-          // 设置UI状态为只读模式
-          setIsReadOnlyMode(true);
-        } else {
-          toast.error(data.error || "创建文件夹失败", {
-            description: data.detail,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error creating folder:", error);
-      toast.error("创建文件夹失败", {
-        description: error instanceof Error ? error.message : "未知错误"
-      });
-    }
-  };
-
-  // 加载所有图片的预签名 URL
+  // 加载图片 URL
   const loadImageUrls = useCallback(async () => {
-    if (!Array.isArray(imageFiles) || imageFiles.length === 0) return;
+    if (!Array.isArray(imageFiles) || imageFiles.length === 0 || !config) return;
     
     const urls: { [key: string]: string } = {};
     const loadPromises = imageFiles.map(async (file) => {
       try {
         if (file.isFolder) return; // 跳过文件夹
         
-        const response = await fetch(`/api/r2?action=getSignedUrl&key=${encodeURIComponent(file.key)}`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        if (data.signedUrl) {
-          urls[file.key] = data.signedUrl;
+        const url = await getSignedUrl(file.key);
+        if (url) {
+          urls[file.key] = url;
         }
       } catch (error) {
         console.error(`Error loading URL for ${file.key}:`, error);
@@ -348,8 +133,15 @@ export default function Home() {
     
     await Promise.all(loadPromises);
     setImageUrls(urls);
-  }, [imageFiles]);
-  
+  }, [imageFiles, config, getSignedUrl]);
+
+  // 当配置或前缀改变时加载文件
+  useEffect(() => {
+    if (isConfigValid) {
+      loadFiles();
+    }
+  }, [isConfigValid, currentPrefix, loadFiles]);
+
   // 当文件列表改变时加载图片URL
   useEffect(() => {
     if (files.length > 0) {
@@ -357,23 +149,255 @@ export default function Home() {
     }
   }, [files, loadImageUrls]);
 
+  // 文件点击处理
+  const handleFileClick = async (file: R2Object) => {
+    if (file.isFolder) {
+      // 如果是文件夹，则导航到该文件夹
+      setCurrentPrefix(file.key);
+    } else {
+      // 如果是文件，显示预览
+      try {
+        setSelectedFile(file);
+        
+        // 获取签名 URL
+        const url = await getSignedUrl(file.key);
+        setSignedUrl(url);
+        
+        // 检查是否是图片
+        const fileName = file.key.split("/").pop() || "";
+        const ext = fileName.split(".").pop()?.toLowerCase() || "";
+        const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+        
+        if (isImage) {
+          // 找到当前图片在图片文件数组中的索引
+          const index = imageFiles.findIndex(img => img.key === file.key);
+          if (index !== -1) {
+            setCarouselIndex(index);
+            setShowImageCarousel(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error processing file click:', error);
+        toast.error('获取文件预览失败');
+      }
+    }
+  };
+
+  // 处理上传文件
+  const handleUpload = async (file: File, key: string) => {
+    if (!config) {
+      toast.error("请先完成 R2 配置");
+      return;
+    }
+    
+    try {
+      // 显示上传进度通知
+      toast.loading(`正在上传: ${file.name}`);
+      
+      // 获取文件完整路径
+      const fullPath = currentPrefix + key;
+      
+      // 准备表单数据
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // 将配置序列化并编码以传递给API
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      
+      // 发送请求
+      const response = await fetch(`/api/r2?action=upload&key=${encodeURIComponent(fullPath)}&config=${configParam}`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '上传失败');
+      }
+      
+      // 上传成功
+      toast.success(`上传成功: ${file.name}`);
+      loadFiles(); // 重新加载文件列表
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
+  // 处理删除文件
+  const handleDelete = async (file: R2Object) => {
+    if (!config) {
+      toast.error("请先完成 R2 配置");
+      return;
+    }
+    
+    try {
+      // 显示确认对话框
+      if (!window.confirm(`确定要删除 "${file.key}" 吗?`)) {
+        return;
+      }
+      
+      toast.loading(`正在删除: ${file.key}`);
+      
+      // 将配置序列化并编码以传递给API
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      
+      // 发送删除请求
+      const response = await fetch(`/api/r2?key=${encodeURIComponent(file.key)}&config=${configParam}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '删除失败');
+      }
+      
+      // 删除成功
+      toast.success(`删除成功: ${file.key}`);
+      
+      // 关闭预览并重新加载文件列表
+      setSelectedFile(null);
+      setSignedUrl("");
+      loadFiles();
+      
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
+  // 处理批量删除
+  const handleBatchDelete = async (files: R2Object[]) => {
+    if (!config) {
+      toast.error("请先完成 R2 配置");
+      return;
+    }
+    
+    if (files.length === 0) {
+      toast.error('未选择任何文件');
+      return;
+    }
+    
+    try {
+      // 显示确认对话框
+      if (!window.confirm(`确定要删除选中的 ${files.length} 个文件吗?`)) {
+        return;
+      }
+      
+      toast.loading(`正在删除 ${files.length} 个文件...`);
+      
+      // 获取文件键列表
+      const keys = files.map(file => file.key);
+      
+      // 将配置序列化并编码以传递给API
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      
+      // 发送批量删除请求
+      const response = await fetch(`/api/r2?action=deleteMultiple&config=${configParam}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keys }),
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '批量删除失败');
+      }
+      
+      const result = await response.json();
+      
+      if (result.errors && result.errors.length > 0) {
+        // 存在部分删除失败
+        const errorCount = result.errors.length;
+        toast.error(`删除完成，但有 ${errorCount} 个文件删除失败`);
+      } else {
+        // 全部删除成功
+        toast.success(`成功删除 ${files.length} 个文件`);
+      }
+      
+      // 重新加载文件列表
+      loadFiles();
+      
+    } catch (error) {
+      console.error('Batch delete error:', error);
+      toast.error(`批量删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
+  // 创建文件夹
+  const handleCreateFolder = async (folderName: string) => {
+    if (!config) {
+      toast.error("请先完成 R2 配置");
+      return;
+    }
+    
+    try {
+      // 构建文件夹完整路径
+      const folderPath = currentPrefix + folderName;
+      
+      // 将配置序列化并编码以传递给API
+      const configParam = encodeURIComponent(JSON.stringify(config));
+      
+      // 发送创建文件夹请求
+      const response = await fetch(`/api/r2?action=createFolder&key=${encodeURIComponent(folderPath)}&config=${configParam}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || '创建文件夹失败');
+      }
+      
+      // 创建成功
+      toast.success(`创建文件夹成功: ${folderName}`);
+      setShowNewFolderDialog(false);
+      loadFiles(); // 重新加载文件列表
+      
+    } catch (error) {
+      console.error('Create folder error:', error);
+      toast.error(`创建文件夹失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
   // 运行诊断
   const runDiagnostics = async () => {
+    // 仅在开发环境中执行诊断
+    if (!isDevelopment) {
+      return;
+    }
+    
     try {
-      const diagResponse = await fetch('/api/r2/diagnose');
-      const diagData = await diagResponse.json();
-      console.log("=== R2 DIAGNOSTICS ===");
-      console.log(diagData);
+      if (!config) {
+        toast.error("请先完成 R2 配置");
+        return;
+      }
       
-      // 在页面上显示一些重要信息
-      if (diagData.connectionTest?.success) {
-        toast.success("R2 连接成功！发现 " + (diagData.connectionTest.objects?.length || 0) + " 个对象");
+      // 显示加载通知
+      toast.loading("正在运行诊断...");
+      
+      // 发送诊断请求
+      const response = await fetch('/api/r2/diagnose', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(`诊断成功: ${result.message}`);
+        console.log('诊断结果:', result);
       } else {
-        toast.error("R2 连接失败: " + diagData.connectionTest?.message);
+        toast.error(`诊断失败: ${result.message}`);
       }
     } catch (error) {
-      console.error("诊断错误:", error);
-      toast.error("运行诊断时出错");
+      console.error('诊断错误:', error);
+      toast.error(`诊断出错: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   };
 
@@ -431,15 +455,6 @@ export default function Home() {
               <p className="text-muted-foreground">
                 {currentPrefix ? `当前目录: ${currentPrefix}` : "根目录"}
               </p>
-              {isReadOnlyMode && (
-                <div className="ml-2 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded-md text-xs font-medium flex items-center">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <path d="M8 11V9l8 8" />
-                  </svg>
-                  只读模式
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -502,8 +517,6 @@ export default function Home() {
             {/* 文件操作按钮 */}
             <Button 
               onClick={() => setShowNewFolderDialog(true)}
-              disabled={isReadOnlyMode}
-              title={isReadOnlyMode ? "只读模式下不可用" : "创建新文件夹"}
               variant="outline"
               size="sm"
               className="px-3 ml-4"
@@ -528,8 +541,6 @@ export default function Home() {
             
             <Button 
               onClick={() => setShowUploadDialog(true)}
-              disabled={isReadOnlyMode}
-              title={isReadOnlyMode ? "只读模式下不可用" : "上传文件"}
               variant="outline"
               size="sm"
               className="px-3"
@@ -589,7 +600,7 @@ export default function Home() {
             onFileClick={handleFileClick}
             onUploadClick={() => setShowUploadDialog(true)}
             onDeleteClick={handleBatchDelete}
-            onNavigate={handleNavigate}
+            onNavigate={setCurrentPrefix}
             onRefresh={loadFiles}
           />
         ) : (
@@ -626,7 +637,6 @@ export default function Home() {
               setSignedUrl("");
             }}
             onDelete={handleDelete}
-            isReadOnly={isReadOnlyMode}
           />
         )}
         

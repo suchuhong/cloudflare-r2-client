@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Toaster, toast } from "sonner";
 import { Loading } from "@/components/loading";
 import { LayoutWithSidebar } from "@/components/layout-with-sidebar";
+import { useConfig } from "@/contexts/config-context";
 
 interface R2Config {
   endpoint: string;
@@ -16,44 +17,19 @@ interface R2Config {
   bucketName: string;
 }
 
-// 定义配置状态的接口
-interface ConfigStatus {
-  configDir?: {
-    path?: string;
-    exists?: boolean;
-    isWritable?: boolean;
+interface TestResult {
+  success: boolean;
+  message: string;
+  connectionDetails?: {
+    endpoint: string;
+    region: string;
+    bucketName: string;
   };
-  configFile?: {
-    path?: string;
-    exists?: boolean;
-    stats?: {
-      mtime?: string | Date;
-      size?: number;
-      [key: string]: unknown;
-    };
-    content?: {
-      endpoint?: string;
-      region?: string;
-      accessKeyId?: string;
-      secretAccessKey?: string;
-      bucketName?: string;
-      [key: string]: unknown;
-    };
-  };
-  systemInfo?: {
-    platform?: string;
-    cwd?: string;
-    homedir?: string;
-    tmpdir?: string;
-    username?: string;
-    nodeVersion?: string;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
 }
 
 export default function SettingsPage() {
-  const [config, setConfig] = useState<R2Config>({
+  const { config, isLoading, saveConfig } = useConfig();
+  const [formValues, setFormValues] = useState<R2Config>({
     endpoint: "",
     region: "auto",
     accessKeyId: "",
@@ -61,118 +37,51 @@ export default function SettingsPage() {
     bucketName: ""
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [showAccessKey, setShowAccessKey] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
-  const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
+  
+  // 检测是否为开发环境
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // 加载配置
+  // 加载已保存的配置
   useEffect(() => {
-    const loadSavedConfig = async () => {
-      try {
-        setIsLoading(true);
-        
-        // 获取配置文件状态信息
-        const statusResponse = await fetch('/api/settings/status');
-        const statusData = await statusResponse.json();
-        console.log('Config file status:', statusData);
-        setConfigStatus(statusData);
-        
-        // 获取掩码后的配置
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const data = await response.json();
-          
-          // 默认设置密钥为隐藏状态
-          setShowAccessKey(false);
-          setShowSecretKey(false);
-          
-          setConfig(data.config);
-        }
-      } catch (error) {
-        console.error("Error loading config:", error);
-        toast.error("加载配置失败");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (config) {
+      setFormValues({
+        endpoint: config.endpoint || "",
+        region: config.region || "auto",
+        accessKeyId: config.accessKeyId || "",
+        secretAccessKey: config.secretAccessKey || "",
+        bucketName: config.bucketName || ""
+      });
+    }
+  }, [config]);
 
-    loadSavedConfig();
-    
-    // 页面卸载或重载时重置显示状态
-    return () => {
-      setShowAccessKey(false);
-      setShowSecretKey(false);
-    };
-  }, []);
+  // 处理表单输入变化
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormValues(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
 
   // 保存配置
   const handleSave = async () => {
     try {
       setIsSaving(true);
       
-      // 创建要发送的配置副本
-      const configToSave = { ...config };
+      // 使用 Context 提供的 saveConfig 方法
+      const success = await saveConfig(formValues);
       
-      // 如果是隐藏状态且显示的是掩码，从服务端获取真实值
-      if (!showAccessKey && configToSave.accessKeyId === '********') {
-        try {
-          const response = await fetch('/api/settings/current');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.config?.accessKeyId) {
-              configToSave.accessKeyId = data.config.accessKeyId;
-            }
-          }
-        } catch (error) {
-          console.error('获取真实秘钥失败', error);
-        }
-      }
-      
-      if (!showSecretKey && configToSave.secretAccessKey === '********') {
-        try {
-          const response = await fetch('/api/settings/current');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.config?.secretAccessKey) {
-              configToSave.secretAccessKey = data.config.secretAccessKey;
-            }
-          }
-        } catch (error) {
-          console.error('获取真实秘钥失败', error);
-        }
-      }
-      
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ config: configToSave }),
-      });
-      
-      if (response.ok) {
+      if (success) {
         toast.success("配置已保存");
-        
-        // 保存后重置为掩码显示
-        const maskedConfig = {
-          ...config,
-          accessKeyId: configToSave.accessKeyId ? '********' : '',
-          secretAccessKey: configToSave.secretAccessKey ? '********' : ''
-        };
-        
-        setConfig(maskedConfig);
-        setShowAccessKey(false);
-        setShowSecretKey(false);
-      } else {
-        const data = await response.json();
-        toast.error(`保存失败: ${data.error}`);
       }
     } catch (error) {
-      console.error("Error saving config:", error);
-      toast.error("保存配置时出错");
+      console.error("保存配置失败:", error);
+      toast.error("保存配置失败");
     } finally {
       setIsSaving(false);
     }
@@ -182,296 +91,277 @@ export default function SettingsPage() {
   const handleTestConnection = async () => {
     try {
       setIsTesting(true);
-      const response = await fetch('/api/settings/test', {
+      setTestResult(null);
+      
+      // 使用当前表单值进行测试
+      const response = await fetch('/api/r2/diagnose', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify(formValues)
       });
       
-      const data = await response.json();
+      const result = await response.json();
       
-      if (response.ok) {
-        toast.success("连接成功！已成功验证 R2 配置");
+      setTestResult({
+        success: result.success,
+        message: result.message,
+        connectionDetails: result.success ? {
+          endpoint: formValues.endpoint,
+          region: formValues.region,
+          bucketName: formValues.bucketName
+        } : undefined
+      });
+      
+      if (result.success) {
+        toast.success("连接测试成功");
       } else {
-        const errorMsg = data.error || "连接失败，请检查配置";
-        toast.error(errorMsg, {
-          duration: 5000,
-        });
+        toast.error(`连接测试失败: ${result.message}`);
       }
     } catch (error) {
-      console.error("Error testing connection:", error);
-      toast.error("测试连接时出错，请检查网络连接", {
-        duration: 5000,
+      console.error("测试连接失败:", error);
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "未知错误"
       });
+      toast.error("测试连接失败");
     } finally {
       setIsTesting(false);
     }
   };
 
-  // 点击显示访问密钥ID
-  const handleShowAccessKey = async () => {
-    // 如果当前是隐藏状态，点击显示时需要获取真实秘钥
-    if (!showAccessKey) {
-      try {
-        const response = await fetch('/api/settings/current');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.config?.accessKeyId) {
-            setConfig(prev => ({
-              ...prev,
-              accessKeyId: data.config.accessKeyId
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('获取真实秘钥失败', error);
-      }
-    }
-    setShowAccessKey(!showAccessKey);
+  // 切换显示 Access Key
+  const handleShowAccessKey = () => {
+    setShowAccessKey(prev => !prev);
   };
-  
-  // 点击显示秘密访问密钥
-  const handleShowSecretKey = async () => {
-    // 如果当前是隐藏状态，点击显示时需要获取真实秘钥
-    if (!showSecretKey) {
-      try {
-        const response = await fetch('/api/settings/current');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.config?.secretAccessKey) {
-            setConfig(prev => ({
-              ...prev,
-              secretAccessKey: data.config.secretAccessKey
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('获取真实秘钥失败', error);
-      }
-    }
-    setShowSecretKey(!showSecretKey);
+
+  // 切换显示 Secret Key
+  const handleShowSecretKey = () => {
+    setShowSecretKey(prev => !prev);
   };
+
+  if (isLoading) {
+    return (
+      <LayoutWithSidebar>
+        <div className="container mx-auto p-4">
+          <Loading text="加载配置中..." />
+        </div>
+      </LayoutWithSidebar>
+    );
+  }
 
   return (
     <LayoutWithSidebar>
-      <div className="p-4 md:p-8">
+      <div className="container mx-auto p-4 max-w-3xl">
         <Toaster position="top-right" />
         
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">设置</h1>
+          <h1 className="text-3xl font-bold">Cloudflare R2 配置</h1>
           <p className="text-muted-foreground">
-            配置 Cloudflare R2 连接参数
+            设置您的 Cloudflare R2 凭证以连接存储桶
           </p>
         </div>
         
-        <Card className="w-full max-w-2xl mx-auto">
+        <Card className="mb-6">
           <CardHeader>
-            <CardTitle>R2 配置</CardTitle>
+            <CardTitle>R2 连接设置</CardTitle>
           </CardHeader>
-          
-          {isLoading ? (
-            <CardContent>
-              <Loading text="加载配置中..." />
-            </CardContent>
-          ) : (
-            <>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="endpoint" className="text-sm font-medium">
-                    端点 URL
-                  </label>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <label htmlFor="endpoint" className="text-sm font-medium">
+                  端点 URL
+                </label>
+                <Input
+                  id="endpoint"
+                  name="endpoint"
+                  placeholder="https://xxxxxxxxxxxx.r2.cloudflarestorage.com"
+                  value={formValues.endpoint}
+                  onChange={handleChange}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Cloudflare R2 存储桶的端点 URL，通常格式为 https://accountid.r2.cloudflarestorage.com
+                </p>
+              </div>
+              
+              <div className="grid gap-2">
+                <label htmlFor="region" className="text-sm font-medium">
+                  区域
+                </label>
+                <Input
+                  id="region"
+                  name="region"
+                  placeholder="auto"
+                  value={formValues.region}
+                  onChange={handleChange}
+                />
+                <p className="text-xs text-muted-foreground">
+                  R2 存储桶的区域，通常为 &quot;auto&quot;
+                </p>
+              </div>
+              
+              <div className="grid gap-2">
+                <label htmlFor="accessKeyId" className="text-sm font-medium">
+                  访问密钥 ID
+                </label>
+                <div className="flex">
                   <Input
-                    id="endpoint"
-                    placeholder="https://xxxxx.r2.cloudflarestorage.com"
-                    value={config.endpoint}
-                    onChange={(e) => setConfig({ ...config, endpoint: e.target.value })}
+                    id="accessKeyId"
+                    name="accessKeyId"
+                    type={showAccessKey ? "text" : "password"}
+                    placeholder="您的 R2 访问密钥 ID"
+                    value={formValues.accessKeyId}
+                    onChange={handleChange}
+                    className="flex-grow"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Cloudflare R2 的端点 URL，格式通常为 https://accountid.r2.cloudflarestorage.com
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="ml-2"
+                    onClick={handleShowAccessKey}
+                  >
+                    {showAccessKey ? "隐藏" : "显示"}
+                  </Button>
                 </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="region" className="text-sm font-medium">
-                    区域
-                  </label>
+              </div>
+              
+              <div className="grid gap-2">
+                <label htmlFor="secretAccessKey" className="text-sm font-medium">
+                  秘密访问密钥
+                </label>
+                <div className="flex">
                   <Input
-                    id="region"
-                    placeholder="auto"
-                    value={config.region}
-                    onChange={(e) => setConfig({ ...config, region: e.target.value })}
+                    id="secretAccessKey"
+                    name="secretAccessKey"
+                    type={showSecretKey ? "text" : "password"}
+                    placeholder="您的 R2 秘密访问密钥"
+                    value={formValues.secretAccessKey}
+                    onChange={handleChange}
+                    className="flex-grow"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    R2 区域，通常为 &quot;auto&quot;
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="ml-2"
+                    onClick={handleShowSecretKey}
+                  >
+                    {showSecretKey ? "隐藏" : "显示"}
+                  </Button>
                 </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="accessKeyId" className="text-sm font-medium">
-                    访问密钥 ID
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="accessKeyId"
-                      placeholder="Access Key ID"
-                      type={showAccessKey ? "text" : "password"}
-                      value={config.accessKeyId}
-                      onChange={(e) => {
-                        // 更新输入的值
-                        setConfig({ ...config, accessKeyId: e.target.value });
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
-                      onClick={handleShowAccessKey}
-                      title={showAccessKey ? "隐藏密钥" : "显示密钥"}
-                    >
-                      {showAccessKey ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
-                          <line x1="2" x2="22" y1="2" y2="22"></line>
-                        </svg>
-                      ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    在 Cloudflare 控制台 R2 部分创建的 API 密钥的 ID
-                  </p>
-                </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="secretAccessKey" className="text-sm font-medium">
-                    秘密访问密钥
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="secretAccessKey"
-                      placeholder="Secret Access Key"
-                      type={showSecretKey ? "text" : "password"}
-                      value={config.secretAccessKey}
-                      onChange={(e) => {
-                        // 更新输入的值
-                        setConfig({ ...config, secretAccessKey: e.target.value });
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-500"
-                      onClick={handleShowSecretKey}
-                      title={showSecretKey ? "隐藏密钥" : "显示密钥"}
-                    >
-                      {showSecretKey ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
-                          <line x1="2" x2="22" y1="2" y2="22"></line>
-                        </svg>
-                      ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    在 Cloudflare 控制台 R2 部分创建的 API 密钥的密钥
-                  </p>
-                </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="bucketName" className="text-sm font-medium">
-                    存储桶名称
-                  </label>
-                  <Input
-                    id="bucketName"
-                    placeholder="my-bucket"
-                    value={config.bucketName}
-                    onChange={(e) => setConfig({ ...config, bucketName: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    要连接的 R2 存储桶名称
-                  </p>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button 
-                  variant="outline" 
-                  onClick={handleTestConnection} 
-                  disabled={isTesting}
-                >
-                  {isTesting ? "测试中..." : "测试连接"}
-                </Button>
-                <Button 
-                  onClick={handleSave} 
-                  disabled={isSaving}
-                >
-                  {isSaving ? "保存中..." : "保存配置"}
-                </Button>
-              </CardFooter>
-            </>
-          )}
+              </div>
+              
+              <div className="grid gap-2">
+                <label htmlFor="bucketName" className="text-sm font-medium">
+                  存储桶名称
+                </label>
+                <Input
+                  id="bucketName"
+                  name="bucketName"
+                  placeholder="your-bucket-name"
+                  value={formValues.bucketName}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={isTesting || isSaving}
+            >
+              {isTesting ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2"></div>
+                  测试中...
+                </>
+              ) : (
+                "测试连接"
+              )}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isTesting || isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2"></div>
+                  保存中...
+                </>
+              ) : (
+                "保存配置"
+              )}
+            </Button>
+          </CardFooter>
         </Card>
         
-        {/* 调试信息 */}
-        <div className="mt-8">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowDebugInfo(!showDebugInfo)}
-          >
-            {showDebugInfo ? "隐藏调试信息" : "显示调试信息"}
-          </Button>
-          
-          {showDebugInfo && configStatus && (
-            <Card className="mt-4 w-full max-w-2xl mx-auto">
-              <CardHeader>
-                <CardTitle>配置文件状态</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-medium">配置目录</h3>
-                    <p className="text-sm">路径: {configStatus.configDir?.path}</p>
-                    <p className="text-sm">存在: {configStatus.configDir?.exists ? "是" : "否"}</p>
-                    <p className="text-sm">可写: {configStatus.configDir?.isWritable ? "是" : "否"}</p>
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-medium">配置文件</h3>
-                    <p className="text-sm">路径: {configStatus.configFile?.path}</p>
-                    <p className="text-sm">存在: {configStatus.configFile?.exists ? "是" : "否"}</p>
-                    {configStatus.configFile?.stats && (
-                      <p className="text-sm">
-                        最后修改: {configStatus.configFile.stats.mtime ? new Date(configStatus.configFile.stats.mtime).toLocaleString() : '未知'}
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-medium">系统信息</h3>
-                    <p className="text-sm">平台: {configStatus.systemInfo?.platform}</p>
-                    <p className="text-sm">工作目录: {configStatus.systemInfo?.cwd}</p>
-                    <p className="text-sm">用户目录: {configStatus.systemInfo?.homedir}</p>
-                    <p className="text-sm">临时目录: {configStatus.systemInfo?.tmpdir}</p>
-                    <p className="text-sm">用户名: {configStatus.systemInfo?.username}</p>
-                  </div>
+        {testResult && (
+          <Card className={`mb-6 ${testResult.success ? "border-green-500" : "border-destructive"}`}>
+            <CardHeader>
+              <CardTitle>
+                {testResult.success ? "连接成功! ✅" : "连接失败 ❌"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-2">{testResult.message}</p>
+              {testResult.success && testResult.connectionDetails && (
+                <div className="space-y-1 text-sm">
+                  <p><strong>端点:</strong> {testResult.connectionDetails.endpoint}</p>
+                  <p><strong>区域:</strong> {testResult.connectionDetails.region}</p>
+                  <p><strong>存储桶:</strong> {testResult.connectionDetails.bucketName}</p>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
+        )}
+        
+        <div className="mt-8 text-sm text-muted-foreground">
+          <p className="mb-2">
+            <strong>提示：</strong> 您的凭证安全地存储在浏览器的 localStorage 中，并且不会发送到任何第三方服务器。
+          </p>
+          <p>
+            <strong>如何获取 R2 凭证?</strong> 登录 Cloudflare 控制台，导航到 R2，然后创建 API 令牌获取访问密钥。
+          </p>
         </div>
+        
+        {/* 调试区域 - 仅在开发环境显示 */}
+        {isDevelopment && (
+          <div className="mt-8">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowDebugInfo(!showDebugInfo)}
+            >
+              {showDebugInfo ? "隐藏调试信息" : "显示调试信息"}
+            </Button>
+            
+            {showDebugInfo && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle>开发调试信息</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm font-mono">
+                    <p><strong>当前环境:</strong> {process.env.NODE_ENV}</p>
+                    <p><strong>配置状态:</strong> {config ? "已加载" : "未加载"}</p>
+                    <p><strong>LocalStorage 状态:</strong> {typeof window !== 'undefined' && localStorage.getItem('r2-config') ? "存在" : "不存在"}</p>
+                    <div>
+                      <p><strong>表单值 (部分隐藏):</strong></p>
+                      <pre className="bg-slate-100 dark:bg-slate-800 p-2 rounded overflow-x-auto">
+                        {JSON.stringify({
+                          ...formValues,
+                          accessKeyId: formValues.accessKeyId ? "***" : "",
+                          secretAccessKey: formValues.secretAccessKey ? "***" : ""
+                        }, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </LayoutWithSidebar>
   );
